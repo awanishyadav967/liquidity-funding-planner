@@ -1,25 +1,23 @@
 # Liquidity Funding Planner
 
-A Python and Streamlit application for exploring a treasury question: **will each currency account stay above its minimum cash buffer, and how should limited central funding cover any projected gaps?**
+Liquidity Funding Planner is a Python app for estimating future cash balances across currencies and deciding where a limited central funding pool may be needed. It answers two practical questions: **which currency accounts could fall below their minimum cash buffer, and how much funding should each receive?**
 
-The app forecasts daily net cashflow for each selected currency, adds those forecasts to opening balances, identifies buffer breaches, converts the largest shortfall in each currency to EUR, and recommends funding amounts within a central budget. It also shows historical and forecast charts, optional backtest results, and an Excel download.
+The project has a Streamlit dashboard for exploring assumptions and a command-line demonstration. Its default cashflow data is generated in code for EUR, USD, JPY, BRL, INR, and AUD. The sample data and exchange rates are illustrative, not live financial data.
 
-The default data and FX rates are illustrative. This is an analytical demonstration, not a live treasury system or a source of executable FX rates.
+## How it works
 
-## What the dashboard does
+1. **Read cashflows.** Use the generated sample or upload a CSV/XLSX file of daily net cashflows. Positive values bring cash in; negative values use cash.
+2. **Forecast each currency.** The app fits a daily SARIMAX model with weekly seasonality. If fitting fails or does not converge, it repeats the latest seven-day pattern as a fallback. Forecast charts include a mean and a 95% interval.
+3. **Project balances.** For each future day, it adds forecast net cashflow to the previous balance, starting from an opening balance you can edit.
+4. **Find buffer breaches.** A shortfall is the amount by which a projected balance falls below the minimum cash buffer. The planner takes the largest shortfall for each currency over the selected horizon.
+5. **Allocate central funding.** It converts those shortfalls to EUR using editable example FX rates. An optimizer recommends amounts within the available EUR funding pool, each currency's shortfall, transfer costs, and priority weights.
+6. **Review results.** The dashboard shows forecast plots, projected balances, funding tables, remaining shortfalls, and an Excel download. An optional backtest compares forecast errors with a seasonal-naive baseline.
 
-1. **Load cashflows.** Use the built-in synthetic dataset or upload a CSV/XLSX file with a date column and one numeric column per currency.
-2. **Forecast daily cashflows.** The default horizon is 30 days; the sidebar allows 7 to 90 days. Each currency gets its own SARIMAX model with weekly seasonality. If fitting fails or does not converge, the app uses a seven-day seasonal-naive forecast.
-3. **Estimate uncertainty.** Forecast charts show a mean and a 95% interval. These are model-based estimates, so unexpected payments or market shocks can still fall outside them.
-4. **Find liquidity gaps.** The app adds forecast cashflows to an editable opening balance, then compares each projected balance with its editable minimum buffer. A shortfall is the amount needed to restore that buffer.
-5. **Recommend funding.** The largest projected shortfall for each currency is converted to EUR using editable example FX rates. A linear optimization allocates no more than the central funding available or the shortfall required for any currency. Transfer cost and priority weight influence which gaps receive funding first.
-6. **Review and export.** Charts and tables show forecasts, balances, shortfalls, recommended amounts, remaining gaps, and estimated transfer costs. The **Run backtest** button compares the forecasting pipeline with a seasonal-naive baseline using MAE and MASE.
+This produces a **scenario-based funding recommendation**. It does not schedule transfers by day or connect to bank accounts.
 
-The built-in sample generates repeatable daily cashflows for **EUR, USD, JPY, BRL, INR, and AUD** using a fixed random seed. It includes recurring receipts, payroll, month-end payments, routine variation, and occasional shocks. No real financial data is included.
+## Run the dashboard
 
-## Run locally
-
-Clone this repository and install the application dependencies in a virtual environment:
+Install Python, then use a terminal from this repository:
 
 ```bash
 git clone https://github.com/awanishyadav967/liquidity-funding-planner.git
@@ -39,20 +37,26 @@ Activate the environment:
 source .venv/bin/activate
 ```
 
-Then install and start the dashboard:
+Install the dependencies and launch Streamlit:
 
 ```bash
 python -m pip install -r requirements.txt
 python -m streamlit run app.py
 ```
 
-Open the local URL printed by Streamlit, normally `http://localhost:8501`. The first forecast may take some time because it fits a model for each selected currency.
+Open the local address printed in the terminal, usually `http://localhost:8501`. The first run can take time because a forecasting model is fitted for every selected currency.
 
-For a command-line demonstration using the synthetic dataset and default assumptions, run `python main.py`. It prints projected minima, shortfalls, funding recommendations, and estimated transfer cost; writes `output.xlsx`; and opens a forecast plot.
+## Use the dashboard
 
-## Upload your own cashflows
+The sidebar lets you switch between **simulated sample data** and a file upload, select currencies, and choose a forecast horizon from 7 to 90 days. It also lets you set opening balances, minimum cash buffers, FX rates to EUR, total central funding, transfer costs, and priority weights.
 
-The first column must contain dates. Each other column represents daily **net** cashflow in that currency's local units. Positive amounts add cash; negative amounts use cash.
+A higher priority weight favors that currency when funding is scarce. A rate shown as `1 USD in EUR` means the EUR value of one USD. After changing inputs, review the projected balance and funding tables to see which accounts breach their buffer and which gaps remain unfunded.
+
+Choose **Run backtest** to evaluate one currency using three chronological folds and a seven-day forecast. The table shows mean absolute error (MAE) and mean absolute scaled error (MASE) for the forecast pipeline and seasonal-naive comparison.
+
+## Upload format
+
+Put dates in the first column and one currency per remaining column. Values are daily **net** cashflows in each currency's own units:
 
 ```csv
 Date,EUR,USD,JPY
@@ -61,45 +65,38 @@ Date,EUR,USD,JPY
 2025-01-03,750,125,63000
 ```
 
-The example shows the layout; an upload needs **at least 60 rows**. Dates must be unique and sorted oldest to newest, and currency columns must be numeric. Missing values are forward-filled before validation, so a missing first value or an entirely empty currency column still causes an error. Daily observations are the intended input because the forecasting code creates daily future dates.
+The example shows the structure; an actual upload needs **at least 60 observations**. Dates must be unique and in ascending order, and currency columns must be numeric. Missing values are forward-filled before validation, but a missing first value or an entirely empty column cannot be filled. Daily observations are intended because the forecast uses daily future dates.
 
-In the sidebar, select the currencies to include and adjust their opening balances, minimum buffers, and conversion rates. A rate labeled `1 USD in EUR`, for example, is the EUR value of one USD. Set the EUR amount available for central funding. Under **Optimization Settings**, edit transfer costs and priority weights. A higher priority weight generally favors that currency when funds are scarce.
+## Results and downloads
 
-## How to read the results
+The **projected balance** is the opening balance plus cumulative forecast net cashflows. The **maximum shortfall** is the largest gap below the chosen buffer over the forecast horizon. Funding is recommended in EUR and also displayed in the local currency, alongside remaining unfunded amounts and estimated transfer costs.
 
-- **Forecast chart:** projected daily net cashflow in local currency, with a 95% interval.
-- **Projected cash balance:** opening balance plus cumulative forecast net cashflows.
-- **Maximum shortfall:** the largest amount by which a projected balance falls below its minimum buffer during the selected horizon.
-- **Recommended funding:** the allocation in EUR and its local-currency equivalent.
-- **Remaining shortfall:** projected need left after recommended funding.
-- **Transfer cost:** estimated from recommended EUR funding and the chosen transfer cost rate.
+The dashboard downloads `liquidity_forecast_output.xlsx` with historical cashflows, forecasts, projected balances, liquidity shortfalls, and funding recommendations. Forecast intervals are shown on screen; the dashboard export does not currently include interval sheets.
 
-The optimizer uses **one maximum shortfall per currency over the whole horizon**. It does not schedule transfers on specific days. Its objective combines priority and transfer cost, subject to nonnegative allocations, each currency's maximum shortfall, and the total central funding limit.
+For a terminal-based example using the generated data and default assumptions, run:
 
-The optional backtest uses three chronological folds with a seven-day horizon. **MAE** measures average absolute error in the currency's units. **MASE** scales error against an in-sample seasonal-naive benchmark; the dashboard also compares the pipeline directly with a seasonal-naive forecast over the same folds.
+```bash
+python main.py
+```
 
-## Excel output
+This prints summary results, writes `output.xlsx`, and opens a forecast plot. The command-line workbook also includes lower and upper forecast interval sheets.
 
-The dashboard's **Download Excel Output** button creates `liquidity_forecast_output.xlsx` with these sheets: `Historical_Cashflows`, `Forecasts`, `Projected_Balances`, `Liquidity_Shortfalls`, and `Funding_Recommendations`.
+## Code layout
 
-The command-line workflow writes `output.xlsx` and also includes `Forecast_Lower_95` and `Forecast_Upper_95`. The dashboard currently displays forecast intervals in charts but does not pass them into its Excel export.
-
-## Project layout
-
-| Path | Purpose |
+| File or folder | Purpose |
 | --- | --- |
-| `app.py` | Streamlit dashboard, inputs, charts, backtest button, and download |
-| `main.py` | Command-line demonstration with synthetic data |
-| `liquidity_forecasting/data.py` | Synthetic cashflows and missing-value preprocessing |
-| `liquidity_forecasting/model.py` | SARIMAX forecasts, intervals, and fallback |
-| `liquidity_forecasting/balances.py` | Projected balances and buffer shortfalls |
-| `liquidity_forecasting/fx.py` | Conversion of local amounts to EUR |
-| `liquidity_forecasting/allocation.py` | Funding allocation and optimization |
-| `liquidity_forecasting/evaluation.py` | Backtesting and forecast accuracy metrics |
-| `liquidity_forecasting/export.py` | Excel workbook generation |
-| `tests/` | Automated checks for the calculation modules |
+| `app.py` | Streamlit dashboard and user controls |
+| `main.py` | Command-line example |
+| `liquidity_forecasting/data.py` | Synthetic cashflows and preprocessing |
+| `liquidity_forecasting/model.py` | SARIMAX forecasts and fallback |
+| `liquidity_forecasting/balances.py` | Balance projections and buffer gaps |
+| `liquidity_forecasting/fx.py` | Currency conversion to EUR |
+| `liquidity_forecasting/allocation.py` | Funding optimization |
+| `liquidity_forecasting/evaluation.py` | Backtesting and error measures |
+| `liquidity_forecasting/export.py` | Excel reports |
+| `tests/` | Automated checks |
 
-To run the project's checks, install the development requirements and use the same commands as CI:
+To run the checks used by the included CI workflow:
 
 ```bash
 python -m pip install -r requirements-dev.txt
@@ -108,8 +105,6 @@ ruff format --check .
 python -m pytest
 ```
 
-## Limits and attribution
+## Limitations
 
-The sample cashflows and FX rates are invented. Forecasts use each currency's past cashflows without incorporating known invoices, payment calendars, holidays, or macroeconomic information. Prediction intervals reflect model uncertainty, and funding recommendations are based on assumptions entered by the user. Review actual cash positions, governed FX rates, and operational constraints before using any analysis in a real treasury process.
-
-The source code and MIT license attribute the original project to [Andorta](https://github.com/Andorta). This README describes the behavior of the code included here.
+The sample cashflows and FX rates are invented. Forecasts use each currency's historical cashflows without known invoices, holidays, or payment calendars. Prediction intervals cannot capture every operational shock. Recommendations use the maximum shortfall per currency rather than a dated transfer schedule. Check real cash positions, approved FX rates, and treasury constraints before using any result for an actual funding decision.
